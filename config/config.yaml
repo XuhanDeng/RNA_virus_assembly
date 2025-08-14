@@ -85,8 +85,8 @@ spades:
   runtime: 7200  # minutes (120 hours)
   kmers: "21,33,55,77,101,121"
 diamond:
-  threads: 16
-  runtime: 7200  # minutes (120 hours)
+  threads: 32
+  runtime: 7200  minutes (120 hours)
   evalue: "1e-5"
   max_target_seqs: 1
 
