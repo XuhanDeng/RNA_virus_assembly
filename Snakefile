@@ -161,6 +161,6 @@ rule orfinder:
         orfs = "results/5_orfinder/merged_orfs.fasta"
     bash:
         """
-        mkdir -p results/5_orfinder
+        mkdir -p results/5_orfinder/{wildcards.sample}
         {config[orfinder]} -in {input.fasta} -out {output.orfs} -outfmt fasta
         """
