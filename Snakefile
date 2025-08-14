@@ -162,5 +162,5 @@ rule orfinder:
     bash:
         """
         mkdir -p results/5_orfinder/{wildcards.sample}
-        {config[orfinder]} -in {input.fasta} -out {output.orfs} -outfmt fasta
+        {config[orfinder]} -in {input.fasta} -out results/5_orfinder/{wildcards.sample}/{wildcards.orfs} -outfmt fasta
         """
