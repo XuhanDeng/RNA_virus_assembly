@@ -159,5 +159,8 @@ rule orfinder:
         fasta = "results/4_reformat/{sample}_reformat.fasta"
     output:
         orfs = "results/5_orfinder/merged_orfs.fasta"
-    conda:
-        "envs/orfinder.yaml"
+    bash:
+        """
+        mkdir -p results/5_orfinder
+        {config[orfinder]} -in {input.fasta} -out {output.orfs} -outfmt fasta
+        """
