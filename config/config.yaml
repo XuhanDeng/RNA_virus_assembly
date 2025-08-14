@@ -1,52 +1,112 @@
 # Yangtze River RNA Virus Pipeline Configuration
 
 # Input files and directories
-samples_file: "config/sample_list.txt"
-raw_data_dir: "data/0_rawdata"
+samples:
+  - test1
+  # - VIR_C_AQ_i_34
+  # - VIR_C_AQ_o_35
+  # - VIR_C_C_CZ_45
+  # - VIR_C_CS_49
+  # - VIR_C_HS_i_29
+  # - VIR_C_JJ_i_31
+  # - VIR_C_JJ_o_33
+  # - VIR_C_JY_46
+  # - VIR_C_JZ_i_20
+  # - VIR_C_JZ_o_21
+  # - VIR_C_MAS_40
+  # - VIR_C_NJ_i_41
+  # - VIR_C_NJ_o_42
+  # - VIR_C_NT_48
+  # - VIR_C_PYH_M_32
+  # - VIR_C_SNT_47
+  # - VIR_C_TCG_50
+  # - VIR_C_TGZ_22
+  # - VIR_C_TL_i_36
+  # - VIR_C_TL_o_37
+  # - VIR_C_WH_i_26
+  # - VIR_C_WH_i_38
+  # - VIR_C_WH_m_27
+  # - VIR_C_WH_o_28
+  # - VIR_C_WH_o_39
+  # - VIR_C_WZ_7
+  # - VIR_C_YC_i_17
+  # - VIR_C_YC_o_18
+  # - VIR_C_YZ_43
+  # - VIR_C_ZJ_44
+  # - VIR_GB_2
+  # - VIR_G_SX_i_12
+  # - VIR_G_SXKQ_A_13
+  # - VIR_G_SXKQ_mb_14
+  # - VIR_G_SXKQ_mc_15
+  # - VIR_G_SXKQ_o_16
+  # - VIR_GWX_i_10
+  # - VIR_G_WX_m_11
+  # - VIR_GYG_1
+  # - VIR_HGMT_3
+  # - VIR_N_CG_30
+  # - VIR_QTX_8
+  # - VIR_QTX_m_9
+  # - VIR_R_DTH_i_23
+  # - VIR_R_DTH_M_24
+  # - VIR_R_DTH_o_25
+  # - VIR_R_QJ_i_19
+  # - VIR_R_WU_i_4
+  # - VIR_R_WU_o_5
+  # - VIR_RXT_6
+# Common resources
+account: "research-ceg-wm"
+regular_partition: "compute"
+regular_memory: "3900" # MB
 
-# Output directories
-results_dir: "results"
-logs_dir: "logs"
+
+#database
+databases:
+  ncbi_vir_reduntant: "databases/ncbi_vir_refseq/ncbi_virref_20250801.fasta"
 
 # Tool-specific parameters
 fastp:
-  threads: 24
-  memory: 128  # GB
+  threads: 4
   runtime: 360  # minutes
   quality_threshold: 20
   length_required: 20
 
 ribodetector:
   threads: 16
-  memory: 64   # GB
   runtime: 7200  # minutes (120 hours)
   min_length: 50
   chunk_size: 2500
 
 spades:
   threads: 16
-  memory: 256  # GB
+  spade_partition: "memory"
+  spade_memory: "16500"  # MB
   runtime: 7200  # minutes (120 hours)
   kmers: "21,33,55,77,101,121"
-  meta_mode: true
 
 esviritu:
   threads: 8
-  memory: 32   # GB
   runtime: 7200  # minutes (120 hours)
   mode: "paired"
 
 virbot:
   threads: 16
-  memory: 32   # GB
-  runtime: 7200  # minutes (120 hours)
+  runtime: 3600  # minutes (60 hours)
 
-# Cluster configuration (for SLURM execution)
-cluster:
-  account: "research-ceg-wm"
-  partition: "compute,memory"
-  
-# HPC-specific settings
-hpc:
-  scratch_dir: "/scratch/xddeng/yangtze/RNA"
-  conda_path: "/home/xddeng/miniconda3/bin/activate"
+bowtie2_reduntant_index:
+  threads: 8
+  runtime: 3600  # minutes (60 hours)
+  index_name: "ncbi_vir_reduntant"
+
+
+bowtie2_reduntant:
+  threads: 8
+  runtime: 3600  # minutes (60 hours)
+  index_name: "ncbi_vir_reduntant"
+
+
+coverm:
+  threads: 4
+  runtime: 1000  # minutes (16.67 hours)
+  min-read-percentage-identity: 95
+  min-read-aligned-percent: 90
+  contig-end-exclusion: 0

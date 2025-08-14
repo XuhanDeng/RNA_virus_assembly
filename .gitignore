@@ -1,3 +1,7 @@
+# Snakemake
+.snakemake/
+.snakemake
+
 # Python
 __pycache__/
 *.py[cod]
@@ -20,47 +24,44 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# IDEs
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Output directories
+results/
+logs/
+benchmarks/
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Output files (use output/ directory instead)
-*.csv
-*.json
-*.xlsx
-output/
-
-# Snakemake specific
-.snakemake/
-*.snakemake.lock
-
-# Bioinformatics files
-*.fasta
-*.fastq
-*.bam
-*.sam
-*.vcf
-*.bed
-*.gff
-*.gtf
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.bak
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/

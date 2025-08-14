@@ -2,8 +2,11 @@ name: esviritu
 channels:
   - bioconda
   - conda-forge
+  - defaults
+variables:
+  ESVIRITU_DB: databases/esviritu_DB/v3.1.1
 dependencies:
   - python=3.9
-  - pip
-  - pip:
-    - EsViritu
+  - esviritu
+  - wget  # For downloading database
+  - tar   # For extracting database

@@ -1,0 +1,7 @@
+name: coverm
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - coverm=0.7.0
