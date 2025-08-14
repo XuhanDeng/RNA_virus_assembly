@@ -1,0 +1,6 @@
+name: orfipy
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - orfipy

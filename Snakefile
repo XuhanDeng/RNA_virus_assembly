@@ -9,22 +9,28 @@ configfile: "config/config.yaml"
 
 
 # Final output rule
-rule all:  
+rule all:
     input:
-    
-    # Step 1: Quality control
+        # Step 1: Quality control
         expand("results/1_fastp/{sample}/{sample}_1P.fq.gz", sample=config["samples"]),
         expand("results/1_fastp/{sample}/{sample}_2P.fq.gz", sample=config["samples"]),
-    
-    # Step 2: rRNA removal
+        
+        # Step 2: rRNA removal
         expand("results/2_ribodetector/{sample}/{sample}_nonrrna.1.fq.gz", sample=config["samples"]),
         expand("results/2_ribodetector/{sample}/{sample}_nonrrna.2.fq.gz", sample=config["samples"]),
-    # Step 3: Assembly
+        
+        # Step 3: Assembly
         expand("results/3_spades/{sample}/scaffolds.fasta", sample=config["samples"]),
         expand("results/3_spades/{sample}/contigs.fasta", sample=config["samples"]),
-    
-    # Step 4: Reformat assemblies
+        
+        # Step 4: Reformat assemblies
         expand("results/4_reformat/{sample}_reformat.fasta", sample=config["samples"]),
+        
+        # Step 5: ORF finding and merging
+        "results/5_orfinder/merged_orfs.fasta",
+        
+        # Step 6: Diamond BLASTP
+        "results/6_diamond/blastp_results.tsv"
 
 
 
@@ -153,14 +159,68 @@ rule reformat_assemblies:
                {input.scaffolds} > {log.out} 1> {log.err}
         """
 
-#Rule 5 : ORFinder to get ORFs in all samples
-rule orfinder:
+#Rule 5 : orfipy to get ORFs for each sample
+rule orfipy:
     input:
         fasta = "results/4_reformat/{sample}_reformat.fasta"
     output:
-        orfs = "results/5_orfinder/merged_orfs.fasta"
-    bash:
+        orfs = "results/5_orfinder/{sample}/{sample}_orfs.fasta"
+    conda:
+        "envs/orfipy.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 120,
+        cpus_per_task = config["orfipy"]["threads"],
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/5_orfinder/{sample}.log",
+        err="log/5_orfinder/{sample}.err"
+    shell:
         """
         mkdir -p results/5_orfinder/{wildcards.sample}
-        {config[orfinder]} -in {input.fasta} -out results/5_orfinder/{wildcards.sample}/{wildcards.orfs} -outfmt fasta
+        orfipy {input.fasta} --dna {output.orfs} --min 10 --max 10000 --procs {threads} --outdir results/5_orfinder/{wildcards.sample}/ > {log.out} 2> {log.err}
+        """
+
+#Rule 6: Merge all ORF files
+rule merge_orfs:
+    input:
+        orfs = expand("results/5_orfinder/{sample}/{sample}_orfs.fasta", sample=config["samples"])
+    output:
+        merged = "results/5_orfinder/merged_orfs.fasta"
+    shell:
+        """
+        cat {input.orfs} > {output.merged}
+        """
+
+#Rule 7: Diamond BLASTP against viral RdRP database
+rule diamond_blastp:
+    input:
+        orfs = "results/5_orfinder/merged_orfs.fasta"
+    output:
+        blastp_results = "results/6_diamond/blastp_results.tsv"
+    conda:
+        "envs/diamond.yaml"
+    params:
+        database = config["database"]["diamond_blastp_db"]
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = config["diamond_blastp"]["runtime"],
+        cpus_per_task = config["diamond_blastp"]["threads"],
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/6_diamond/blastp.log",
+        err="log/6_diamond/blastp.err"
+    shell:
+        """
+        mkdir -p results/6_diamond
+        diamond blastp \
+            --query {input.orfs} \
+            --db {params.database} \
+            --out {output.blastp_results} \
+            --evalue {config[diamond_blastp][evalue]} \
+            --threads {threads} \
+            --outfmt 6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore \
+            --max-target-seqs 5 > {log.out} 2> {log.err}
         """

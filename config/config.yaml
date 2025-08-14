@@ -60,7 +60,7 @@ regular_memory: "3900" # MB
 
 #Software
 
-orfinder: "software/ORFfinder"
+
 
 
 #database
@@ -87,9 +87,16 @@ spades:
   spade_memory: "16500"  # MB
   runtime: 7200  # minutes (120 hours)
   kmers: "21,33,55,77,101,121"
+
+orfipy:
+  threads: 16
+  runtime: 7200  # minutes (120 hours)
+  min_length: 10
+  max_length: 10000
+
 diamond_blastp:
   threads: 32
-  runtime: 7200  minutes (120 hours)
+  runtime: 7200  # minutes (120 hours)
   evalue: "1e-5"
 
 

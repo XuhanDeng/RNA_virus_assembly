@@ -1,6 +1,0 @@
-# Sample list for Yangtze River RNA virus pipeline
-# Add your sample names here, one per line
-# Example:
-# VIR_G_SX_i_01
-# VIR_G_SX_i_02
-# VIR_G_SX_i_03
