@@ -84,31 +84,9 @@ spades:
   spade_memory: "16500"  # MB
   runtime: 7200  # minutes (120 hours)
   kmers: "21,33,55,77,101,121"
-
-esviritu:
-  threads: 8
-  runtime: 7200  # minutes (120 hours)
-  mode: "paired"
-
-virbot:
+diamond:
   threads: 16
-  runtime: 3600  # minutes (60 hours)
+  runtime: 7200  # minutes (120 hours)
+  evalue: "1e-5"
+  max_target_seqs: 1
 
-bowtie2_reduntant_index:
-  threads: 8
-  runtime: 3600  # minutes (60 hours)
-  index_name: "ncbi_vir_reduntant"
-
-
-bowtie2_reduntant:
-  threads: 8
-  runtime: 3600  # minutes (60 hours)
-  index_name: "ncbi_vir_reduntant"
-
-
-coverm:
-  threads: 4
-  runtime: 1000  # minutes (16.67 hours)
-  min-read-percentage-identity: 95
-  min-read-aligned-percent: 90
-  contig-end-exclusion: 0
