@@ -60,6 +60,11 @@ account: "research-ceg-wm"
 regular_partition: "compute"
 regular_memory: "3900" # MB
 
+#Software
+
+orfinder: "orfinder/1.0"
+
+
 
 #database
 databases:
