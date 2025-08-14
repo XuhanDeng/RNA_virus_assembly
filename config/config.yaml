@@ -4,6 +4,7 @@
 samples:
   - test1
   - test2
+  -database
   # - VIR_C_AQ_i_34
   # - VIR_C_AQ_o_35
   # - VIR_C_C_CZ_45
