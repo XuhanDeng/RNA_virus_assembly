@@ -163,7 +163,7 @@ rule reformat_assemblies:
         """
 
 # rule 5 blastx to self-established viral RdRP database
-# NCBI ref viral database downlaed on 2025-08-15
+# NCBI ref viral database downlaed on 2025-08-15(4,301 sequences)
 # well-currated rdrp database from "Using artificial intelligence to document the hidden RNA virosphere" 
 # RDRP database from "Using artificial intelligence to document the hidden RNA virosphere"  identification results (513,134 sequences)
 
