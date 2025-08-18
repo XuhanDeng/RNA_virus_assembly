@@ -162,11 +162,12 @@ rule reformat_assemblies:
                {input.scaffolds} > {log.out} 1> {log.err}
         """
 
-# rule 5 blastx to self-established viral RdRP database
+# rule 5 established viral RDRP protein database
 # NCBI ref viral database downlaed on 2025-08-15(3,105 sequences)
 # well-currated rdrp database from "Using artificial intelligence to document the hidden RNA virosphere" 
 # RDRP database from "Using artificial intelligence to document the hidden RNA virosphere"  identification results (513,134 sequences)
-merge
+
+
 
 
 
