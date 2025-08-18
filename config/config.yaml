@@ -91,13 +91,17 @@ spades:
 orfipy:
   threads: 16
   runtime: 7200  # minutes (120 hours)
-  min_length: 10
+  min_length: 200
   max_length: 10000
 
 diamond_blastp:
-  threads: 32
+  threads: 24
   runtime: 7200  # minutes (120 hours)
-  evalue: "1e-5"
+  evalue: "1E-5"
+
+clustering:
+  threads: 32
+  runtime: 7200  # minutes (120 hours)"
 
 
 

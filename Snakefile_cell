@@ -162,17 +162,6 @@ rule reformat_assemblies:
                {input.scaffolds} > {log.out} 1> {log.err}
         """
 
-# rule 5 blastx to self-established viral RdRP database
-# 
-
-
-
-
-
-
-
-
-
 #Rule 5 : orfipy to get ORFs for each sample
 rule orfipy:
     input:
@@ -206,19 +195,6 @@ rule merge_orfs:
         """
         cat {input.orfs} > {output.merged}
         """
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #Rule 7: Create Diamond database
 rule diamond_makedb:
