@@ -29,11 +29,9 @@ rule all:
         # Step 5: ORF finding and merging
         "results/5_orfinder/merged_orfs.fasta",
         
-        # Step 6: Diamond BLASTP
-        "results/6_diamond/blastp_results.tsv",
+        # Step 6: Custom RDRP database
+        "results/5_blastx/database/diamond/custom_rdrp.dmnd"
         
-        # Step 7: Clustering analysis
-        "results/7_clustering/final_clusters.tsv"
 
 
 
@@ -166,14 +164,110 @@ rule reformat_assemblies:
 # NCBI ref viral database downlaed on 2025-08-15(3,105 sequences)
 # well-currated rdrp database from "Using artificial intelligence to document the hidden RNA virosphere" 
 # RDRP database from "Using artificial intelligence to document the hidden RNA virosphere"  identification results (513,134 sequences)
+#cd-hit was used for a threshold with 90% identity 
+
+rule create_rdrp_protein_database:
+    input:
+        cell_well_currated = "database/rdrp_all/Cell_well/5979_known_viral_RdRPs.fasta",
+        cell_identified = "database/rdrp_all/Cell_identified/cell_identified.faa",
+        NCBI_ref = "database/rdrp_all/ncbi_0815/NCBI_ref_rdrp_0815.faa"
+    output:
+        db = "results/5_blastx/database/diamond/custom_rdrp.dmnd",
+        clustered_fasta = "results/5_blastx/database/90/custom_rdrp.90.fasta"
+    conda:
+        "envs/diamond-seqkit-cdhit.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 6000,  # minutes (12 hours)
+        cpus_per_task = 32,
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/create_rdrp_protein_db/makedb.log",
+        err="log/create_rdrp_protein_db/makedb.err"
+    shell:
+        """
+        mkdir -p log/create_rdrp_protein_db results/5_blastx/database/90 results/5_blastx/database/diamond
+        cat {input.cell_well_currated} {input.cell_identified} {input.NCBI_ref} > results/5_blastx/database/merge_custom_rdrp.fasta
+        
+        cd-hit -i results/5_blastx/database/merge_custom_rdrp.fasta -o {output.clustered_fasta} -c 0.9 -n 5 -g 1 -G 0 -aS 0.8 -d 0 -p 1 -T {resources.cpus_per_task} -M 0 -B 1
+        
+        diamond makedb --in {output.clustered_fasta} --db {output.db} > {log.out} 2> {log.err}
+        """
+
+
+
+
+# establish HMM database for RDRP
+# HMM database is built from the clustered RDRP protein sequences with 40% identity
+rule hmmdatabse_establishment:
+    input:
+        clustered_fasta = "results/5_blastx/database/90/custom_rdrp.90.fasta"
+    output:
+
+        clustered_fasta_40 = "results/7_hmmer/database/cdhit/40/cdhit40.fasta"
+
+    conda: "cdhit-biopython-mafft-hmmer.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 6000,  # minutes
+        cpus_per_task = 16,
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+
+        
+    log:
+        out="log/7_hmmer/hmmdatabase_establishment.log",
+        err="log/7_hmmer/hmmdatabase_establishment.err"
+####################################
+        mkdir -p results/7_hmmer/database/cdhit/40
+        mkdir -p results/7_hmmer/database/{fasta,mafft,hmm}
+        perl config["software"]["psi-cd-hit"] -i {input.clustered_fasta} -o {output.clustered_fasta_40} -c 0.4 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 16 -blp 16
+        python {config["software"]["ParseCDHIT"]} results/7_hmmer/database/cdhit/40/cdhit40.fasta.clstr  {input.clustered_fasta}  
+        mv *.fasta results/7_hmmer/database/fasta
+        for file in results/7_hmmer/database/fasta/*.fasta; do
+            mafft --localpair --maxiterate 1000 $file > results/7_hmmer/database/mafft/$(basename $file.aln.faa)
+        done
+        
 
 
 
 
 
 
+rule create_rdrp_hmm_protein_database:
+    input: 
+        clustered_fasta = "results/5_blastx/database/90/custom_rdrp.90.fasta"
+    output:
+        hmm = "results/7_hmmer/database/custom_modules.hmm",
+        pressed = expand("results/hmmer/custom_modules.hmm.h3{f,i,m,p}")
+    conda: "envs/hmmer-mafft.yaml"
+    shell:
+        """
+        mkdir -p results/7_hmmer/database
+        mafft --localpair --maxiterate 1000 {input} > aligned.faa
+        mafft --auto  > results/7_hmmer/database/homologs.aln.faa
+        hmmbuild results/hmmer/RdRp.hmm results/hmmer/homologs.aln.faa
+        cat results/hmmer/*.hmm > {output.hmm}
+        hmmpress {output.hmm}
+        """
 
 
+
+
+
+rule hmmsearch_orfs:
+    input:
+        hmmdb = "results/hmmer/custom_modules.hmm",
+        orfs = "results/5_orfinder/merged_orfs.fasta"
+    output:
+        tbl = "results/hmmer/hmmer_hits.tbl",
+        domtbl = "results/hmmer/hmmer_dom.tbl"
+    conda: "envs/hmmer.yaml"
+    shell:
+        """
+        hmmscan --cpu 16 --tblout {output.tbl} --domtblout {output.domtbl} {input.hmmdb} {input.orfs}
+        """
 
 
 
@@ -212,122 +306,3 @@ rule merge_orfs:
         """
         cat {input.orfs} > {output.merged}
         """
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#Rule 7: Create Diamond database
-rule diamond_makedb:
-    input:
-        fasta = "database/5979_known_viral_RdRPs.fasta"
-    output:
-        db = "database/5979_known_viral_RdRPs.dmnd"
-    conda:
-        "envs/diamond.yaml"
-    resources:
-        mem_mb_per_cpu = config["regular_memory"],
-        runtime = 60,  # minutes
-        cpus_per_task = 1,
-        slurm_partition = config["regular_partition"],
-        slurm_account = config["account"]
-    log:
-        out="log/diamond_makedb/makedb.log",
-        err="log/diamond_makedb/makedb.err"
-    shell:
-        """
-        mkdir -p log/diamond_makedb
-        diamond makedb --in {input.fasta} --db {output.db} > {log.out} 2> {log.err}
-        """
-
-#Rule 8: Diamond BLASTP against viral RdRP database
-rule diamond_blastp:
-    input:
-        orfs = "results/5_orfinder/merged_orfs.fasta",
-        db = "database/5979_known_viral_RdRPs.dmnd"
-    output:
-        blastp_results = "results/6_diamond/blastp_results.tsv"
-    conda:
-        "envs/diamond.yaml"
-    params:
-        database = config["database"]["diamond_blastp_db"]
-    resources:
-        mem_mb_per_cpu = config["regular_memory"],
-        runtime = config["diamond_blastp"]["runtime"],
-        cpus_per_task = config["diamond_blastp"]["threads"],
-        slurm_partition = config["regular_partition"],
-        slurm_account = config["account"]
-    log:
-        out="log/6_diamond/blastp.log",
-        err="log/6_diamond/blastp.err"
-    shell:
-        """
-        mkdir -p results/6_diamond
-        diamond blastp \
-            --query {input.orfs} \
-            --db {input.db} \
-            --out {output.blastp_results} \
-            --evalue {config[diamond_blastp][evalue]} \
-            --threads {config[diamond_blastp][threads]} \
-            -k 1 \
-            --outfmt 6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore \
-            --max-target-seqs 5 > {log.out} 2> {log.err}
-        """
-
-#Rule 9: Complete clustering analysis pipeline
-rule clustering_analysis:
-    input:
-        blastp_results = "results/6_diamond/blastp_results.tsv",
-        orfs = "results/5_orfinder/merged_orfs.fasta"
-    output:
-        final_clusters = "results/7_clustering/final_clusters.tsv"
-    conda:
-        "envs/clustering.yaml"
-    resources:
-        mem_mb_per_cpu = config["regular_memory"],
-        runtime = config["clustering"]["runtime"],
-        cpus_per_task = config["clustering"]["threads"],
-        slurm_partition = config["regular_partition"],
-        slurm_account = config["account"]
-    log:
-        out="log/7_clustering/clustering.log",
-        err="log/7_clustering/clustering.err"
-    shell:
-        """
-        mkdir -p results/7_clustering log/7_clustering
-        
-        # Filter BLASTP hits
-        cut -f1 {input.blastp_results} | sort -u > results/7_clustering/hit_ids.txt
-        seqkit grep -f results/7_clustering/hit_ids.txt {input.orfs} > results/7_clustering/filtered_orfs.fasta
-        
-        # Multi-step clustering
-        cd-hit -i results/7_clustering/filtered_orfs.fasta -o results/7_clustering/filtered_orfs.90.fasta \
-               -c 0.9 -n 5 -g 1 -G 0 -aS 0.8 -d 0 -p 1 -T {config[clustering][threads]} -M 0
-        
-        cd-hit -i results/7_clustering/filtered_orfs.90.fasta -o results/7_clustering/filtered_orfs.60.fasta \
-               -c 0.6 -n 4 -g 1 -G 0 -aS 0.8 -d 0 -p 1 -T {config[clustering][threads]} -M 0
-        
-        psi-cd-hit.pl -i results/7_clustering/filtered_orfs.60.fasta -o results/7_clustering/filtered_orfs.20.fasta \
-                      -c 0.2 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 8 -blp {config[clustering][threads]} 
-        
-        # Combine and sort clusters
-        clstr_rev.pl results/7_clustering/filtered_orfs.90.fasta.clstr results/7_clustering/filtered_orfs.60.fasta.clstr > results/7_clustering/filtered_orfs.90-60.clstr
-        clstr_rev.pl results/7_clustering/filtered_orfs.90-60.clstr results/7_clustering/filtered_orfs.20.fasta.clstr > results/7_clustering/filtered_orfs.90-60-20.clstr
-        clstr_sort_by.pl < results/7_clustering/filtered_orfs.90-60-20.clstr no > results/7_clustering/filtered_orfs.90-60-20.clstr.sort
-        clstr2txt results/7_clustering/filtered_orfs.90-60-20.clstr.sort > {output.final_clusters}
-        
-        # Cleanup intermediate files
-        rm -f results/7_clustering/*.pl results/7_clustering/*.sh results/7_clustering/*.out 
-        rm -f results/7_clustering/*.log results/7_clustering/*.restart results/7_clustering/*-bl*
-        rm -f results/7_clustering/*-seq results/7_clustering/hit_ids.txt
-        """
-# Rule 10 :Remove 

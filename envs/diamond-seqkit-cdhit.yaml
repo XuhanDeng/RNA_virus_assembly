@@ -1,0 +1,8 @@
+name: diamond-seqkit-cdhit
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - diamond=2.1.13
+  - seqkit = 2.10.0
+  - cd-hit = 4.8.1
