@@ -59,6 +59,10 @@ regular_partition: "compute"
 regular_memory: "3900" # MB
 
 #Software
+software:
+  psi-cd-hit: "software/cdhit/psi-cd-hit/psi-cd-hit.pl"
+  ParseCDHIT: "software/bioinfo-tools/ParseCDHIT.py"
+    
 
 
 
@@ -101,7 +105,27 @@ diamond_blastp:
 
 clustering:
   threads: 32
-  runtime: 7200  # minutes (120 hours)"
+  runtime: 7200  # minutes (120 hours)
+
+# New analysis parameters
+custom_rdrp_database:
+  threads: 16
+  runtime: 360  # minutes (6 hours)
+
+diamond_blastx:
+  threads: 24
+  runtime: 240  # minutes (4 hours)
+  evalue: "1e-5"
+
+taxonomy_assignment:
+  threads: 4
+  runtime: 120  # minutes (2 hours)
+
+hmm_search:
+  threads: 8
+  runtime: 180  # minutes (3 hours)
+  min_bitscore: 40
+  min_aligned_fraction: 0.4
 
 
 

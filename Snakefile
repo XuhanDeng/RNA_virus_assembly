@@ -29,8 +29,15 @@ rule all:
         # Step 5: ORF finding and merging
         "results/5_orfinder/merged_orfs.fasta",
         
-        # Step 6: Custom RDRP database
-        "results/5_blastx/database/diamond/custom_rdrp.dmnd"
+        # Step 6: Custom RDRP database and analysis
+        "results/5_blastx/database/diamond/custom_rdrp.dmnd",
+        "results/7_hmmer/database/custom_modules.hmm",
+        
+        # Step 7: BLASTX analysis  
+        expand("results/5_blastx/blastx/{sample}/{sample}_blastx.tbl", sample=config["samples"]),
+        
+        # Step 8: HMM search results
+        "results/7_hmmer/hmmer_hits.tbl"
         
 
 
@@ -198,82 +205,97 @@ rule create_rdrp_protein_database:
 
 
 
-# establish HMM database for RDRP
+# rule6 establish HMM database for RDRP
 # HMM database is built from the clustered RDRP protein sequences with 40% identity
-rule hmmdatabse_establishment:
+rule hmmdatabase_establishment:
     input:
         clustered_fasta = "results/5_blastx/database/90/custom_rdrp.90.fasta"
     output:
-
-        clustered_fasta_40 = "results/7_hmmer/database/cdhit/40/cdhit40.fasta"
-
-    conda: "cdhit-biopython-mafft-hmmer.yaml"
+        clustered_fasta_40 = "results/7_hmmer/database/cdhit/40/cdhit40.fasta",
+        hmm_profile = "results/7_hmmer/database/custom_modules.hmm"
+    conda: "envs/cdhit-biopython-mafft-hmmer.yaml"
     resources:
         mem_mb_per_cpu = config["regular_memory"],
         runtime = 6000,  # minutes
         cpus_per_task = 16,
         slurm_partition = config["regular_partition"],
         slurm_account = config["account"]
-
-        
     log:
         out="log/7_hmmer/hmmdatabase_establishment.log",
         err="log/7_hmmer/hmmdatabase_establishment.err"
-####################################
-        mkdir -p results/7_hmmer/database/cdhit/40
-        mkdir -p results/7_hmmer/database/{fasta,mafft,hmm}
-        perl config["software"]["psi-cd-hit"] -i {input.clustered_fasta} -o {output.clustered_fasta_40} -c 0.4 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 16 -blp 16
-        python {config["software"]["ParseCDHIT"]} results/7_hmmer/database/cdhit/40/cdhit40.fasta.clstr  {input.clustered_fasta}  
-        mv *.fasta results/7_hmmer/database/fasta
+    shell:
+        """
+        mkdir -p results/7_hmmer/database/cdhit/40 log/7_hmmer
+        mkdir -p results/7_hmmer/database/{{fasta,mafft,hmm}}
+        
+        # First clustering at 40% identity using PSI-CD-HIT
+        perl {config[software][psi-cd-hit]} -i {input.clustered_fasta} -o {output.clustered_fasta_40} -c 0.4 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 16 -blp 16
+        
+        # Parse clusters and extract sequences for each cluster
+        python {config[software][ParseCDHIT]} results/7_hmmer/database/cdhit/40/cdhit40.fasta.clstr {input.clustered_fasta}
+        mv *.fasta results/7_hmmer/database/fasta/
+        
+        # Align each cluster and build HMM profiles
         for file in results/7_hmmer/database/fasta/*.fasta; do
-            mafft --localpair --maxiterate 1000 $file > results/7_hmmer/database/mafft/$(basename $file.aln.faa)
+            if [ -f "$file" ]; then
+                basename=$(basename "$file" .fasta)
+                # Align sequences in cluster
+                mafft --thread {resources.cpus_per_task} --localpair --maxiterate 1000 "$file" > results/7_hmmer/database/mafft/"$basename".aln.faa
+                # Build HMM profile for cluster
+                hmmbuild results/7_hmmer/database/hmm/"$basename".hmm results/7_hmmer/database/mafft/"$basename".aln.faa
+            fi
         done
         
-
-
-
-
-
-
-rule create_rdrp_hmm_protein_database:
-    input: 
-        clustered_fasta = "results/5_blastx/database/90/custom_rdrp.90.fasta"
-    output:
-        hmm = "results/7_hmmer/database/custom_modules.hmm",
-        pressed = expand("results/hmmer/custom_modules.hmm.h3{f,i,m,p}")
-    conda: "envs/hmmer-mafft.yaml"
-    shell:
-        """
-        mkdir -p results/7_hmmer/database
-        mafft --localpair --maxiterate 1000 {input} > aligned.faa
-        mafft --auto  > results/7_hmmer/database/homologs.aln.faa
-        hmmbuild results/hmmer/RdRp.hmm results/hmmer/homologs.aln.faa
-        cat results/hmmer/*.hmm > {output.hmm}
-        hmmpress {output.hmm}
+        # Combine all HMM profiles
+        cat results/7_hmmer/database/hmm/*.hmm > {output.hmm_profile}
+        hmmpress {output.hmm_profile}
         """
 
 
 
-
-
-rule hmmsearch_orfs:
+# Rule 7: Run BLASTX to find RDRP sequences in assemblies
+rule blastx_rdrp:
     input:
-        hmmdb = "results/hmmer/custom_modules.hmm",
-        orfs = "results/5_orfinder/merged_orfs.fasta"
+        fasta = "results/4_reformat/{sample}_reformat.fasta",
+        db = "results/5_blastx/database/diamond/custom_rdrp.dmnd"
     output:
-        tbl = "results/hmmer/hmmer_hits.tbl",
-        domtbl = "results/hmmer/hmmer_dom.tbl"
-    conda: "envs/hmmer.yaml"
+        tbl = "results/5_blastx/blastx/{sample}/{sample}_blastx.tbl",
+        unique_ids = "results/5_blastx/blastx/{sample}/{sample}_blastx.unique_ids.txt"
+    conda:
+        "envs/diamond-seqkit-cdhit.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 6000,  # minutes
+        cpus_per_task = config["blastx"]["threads"],
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/5_blastx/blastx/{sample}.log",
+        err="log/5_blastx/blastx/{sample}.err"
     shell:
         """
-        hmmscan --cpu 16 --tblout {output.tbl} --domtblout {output.domtbl} {input.hmmdb} {input.orfs}
+        mkdir -p results/5_blastx/blastx/{wildcards.sample} log/5_blastx/blastx
+        
+        # Filter sequences with minimum length of 600 bp
+        seqkit seq -m 600 {input.fasta} > results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta
+        
+        # Run DIAMOND BLASTX
+        diamond blastx --query results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta \
+            --db {input.db} \
+            --out {output.tbl} \
+            --outfmt 6 qseqid sseqid qlen length pident evalue \
+            --evalue 1E-5 \
+            --threads {config[blastx][threads]} \
+            --max-target-seqs 1 \
+            --very-sensitive \
+            --quiet > {log.out} 2> {log.err}
+        
+        # Extract unique sequence IDs from BLASTX hits
+        cat {output.tbl} | cut -f1 | sort -u > {output.unique_ids}
         """
 
 
-
-
-
-#Rule 5 : orfipy to get ORFs for each sample
+#Rule 8 : orfipy to get ORFs for each sample
 rule orfipy:
     input:
         fasta = "results/4_reformat/{sample}_reformat.fasta"
@@ -295,6 +317,36 @@ rule orfipy:
         mkdir -p results/5_orfinder/{wildcards.sample}
         orfipy {input.fasta} --dna {output.orfs} --min 10 --max 10000 --procs {config[orfipy][threads]} --outdir results/5_orfinder/{wildcards.sample}/ > {log.out} 2> {log.err}
         """
+
+
+
+
+rule hmmsearch_orfs:
+    input:
+        hmmdb = "results/7_hmmer/database/custom_modules.hmm",
+        orfs = "results/5_orfinder/merged_orfs.fasta"
+    output:
+        tbl = "results/7_hmmer/hmmer_hits.tbl",
+        domtbl = "results/7_hmmer/hmmer_dom.tbl"
+    conda: "envs/cdhit-biopython-mafft-hmmer.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 180,  # minutes
+        cpus_per_task = 16,
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/7_hmmer/hmmsearch.log",
+        err="log/7_hmmer/hmmsearch.err"
+    shell:
+        """
+        mkdir -p results/7_hmmer log/7_hmmer
+        hmmscan --cpu {resources.cpus_per_task} --tblout {output.tbl} --domtblout {output.domtbl} {input.hmmdb} {input.orfs} > {log.out} 2> {log.err}
+        """
+
+
+
+
 
 #Rule 6: Merge all ORF files
 rule merge_orfs:

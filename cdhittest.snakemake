@@ -1,0 +1,11 @@
+
+mkdir cd-hit/90
+
+cd-hit -i cd-hit/top100.faa -o cd-hit/90/cdhit90.fasta -c 0.9 -n 5 -g 1 -G 0 -aS 0.8 -d 0 -p 1 -T 2 -M 0 -B 1 
+
+
+perl /scratch/xddeng/yangtze/RNA/assembly_rdrp/software/cdhit/psi-cd-hit/psi-cd-hit.pl cd-hit/90/cdhit90.fasta -o cd-hit/40/cdhit40.fasta -c 0.4 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 2 -blp 16
+
+conda activate biopython 
+
+python /scratch/xddeng/yangtze/RNA/assembly_rdrp/software/bioinfo-tools/ParseCDHIT.py cd-hit/40/cdhit40.fasta.clstr cd-hit/90/cdhit90.fasta
