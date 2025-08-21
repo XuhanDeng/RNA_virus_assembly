@@ -93,7 +93,7 @@ spades:
   kmers: "21,33,55,77,101,121"
 
 orfipy:
-  threads: 16
+  threads: 4
   runtime: 7200  # minutes (120 hours)
   min_length: 200
   max_length: 10000
@@ -111,6 +111,14 @@ clustering:
 custom_rdrp_database:
   threads: 16
   runtime: 360  # minutes (6 hours)
+
+blastx:
+  threads: 24
+  runtime: 6000  # minutes (100 hours) 
+  evalue: "1E-5"
+  min_length: 600  # minimum sequence length
+  max_target_seqs: 1
+  sensitivity: "very-sensitive"
 
 diamond_blastx:
   threads: 24

@@ -50,8 +50,11 @@ results/
 logs/
 benchmarks/
 
-# Large database files (>100MB)
-database/rdrp_all/Cell_identified/cell_identified.faa
+# Database files (large files and directories)
+database/
+*.dmnd
+*.faa
+*.fasta
 
 # IDE files
 .vscode/

@@ -27,7 +27,7 @@ rule all:
         expand("results/4_reformat/{sample}_reformat.fasta", sample=config["samples"]),
         
         # Step 5: ORF finding and merging
-        "results/5_orfinder/merged_orfs.fasta",
+        expand("results/6_orfinder/{sample}/{sample}_orfs_filtered.fasta", sample=config["samples"]),
         
         # Step 6: Custom RDRP database and analysis
         "results/5_blastx/database/diamond/custom_rdrp.dmnd",
@@ -36,8 +36,9 @@ rule all:
         # Step 7: BLASTX analysis  
         expand("results/5_blastx/blastx/{sample}/{sample}_blastx.tbl", sample=config["samples"]),
         
-        # Step 8: HMM search results
-        "results/7_hmmer/hmmer_hits.tbl"
+        # Step 8: ORF clustering and HMM search results
+        "results/7_hmmer/cd-hit/merged_orfs_filtered_98.fasta",
+        "results/7_hmmer/hmmscan/hmmer_hits.tbl"
         
 
 
@@ -166,6 +167,29 @@ rule reformat_assemblies:
                -o {output.reformatted} \
                {input.scaffolds} > {log.out} 1> {log.err}
         """
+#rule4_1: over 600bp sequences
+rule reformat_assemblies_over_600bp:
+    input:
+        reformatted = "results/4_reformat/{sample}_reformat.fasta"
+    output:
+        reformatted_over_600bp = "results/4_reformat/{sample}_reformat_over_600bp.fasta"
+    conda:
+        "envs/seqkit.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],  # MB
+        runtime = 60,  # minutes
+        cpus_per_task = 2 ,
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/4_reformat/{sample}_over_600bp.log",
+        err="log/4_reformat/{sample}_over_600bp.err"
+    shell:
+        """
+        mkdir -p results/4_reformat
+        seqkit seq -m 600 {input.reformatted} > {output.reformatted_over_600bp} \
+        > {log.out} 2> {log.err}
+        """ 
 
 # rule 5 established viral RDRP protein database
 # NCBI ref viral database downlaed on 2025-08-15(3,105 sequences)
@@ -226,7 +250,7 @@ rule hmmdatabase_establishment:
     shell:
         """
         mkdir -p results/7_hmmer/database/cdhit/40 log/7_hmmer
-        mkdir -p results/7_hmmer/database/{{fasta,mafft,hmm}}
+        mkdir -p results/7_hmmer/database/{fasta,mafft,hmm}
         
         # First clustering at 40% identity using PSI-CD-HIT
         perl {config[software][psi-cd-hit]} -i {input.clustered_fasta} -o {output.clustered_fasta_40} -c 0.4 -ce 1e-3 -aS 0.5 -G 1 -g 1 -exec local -para 16 -blp 16
@@ -256,16 +280,18 @@ rule hmmdatabase_establishment:
 # Rule 7: Run BLASTX to find RDRP sequences in assemblies
 rule blastx_rdrp:
     input:
-        fasta = "results/4_reformat/{sample}_reformat.fasta",
+        fasta = "results/4_reformat/{sample}_reformat_over_600bp.fasta",
         db = "results/5_blastx/database/diamond/custom_rdrp.dmnd"
     output:
         tbl = "results/5_blastx/blastx/{sample}/{sample}_blastx.tbl",
-        unique_ids = "results/5_blastx/blastx/{sample}/{sample}_blastx.unique_ids.txt"
+        unique_ids = "results/5_blastx/blastx/{sample}/{sample}_blastx.unique_ids.txt",
+        candidates = "results/5_blastx/candidates/{sample}_candidates.fasta",
+        uncandidates = "results/5_blastx/uncandidates/{sample}_uncandidates.fasta"
     conda:
         "envs/diamond-seqkit-cdhit.yaml"
     resources:
         mem_mb_per_cpu = config["regular_memory"],
-        runtime = 6000,  # minutes
+        runtime = config["blastx"]["runtime"],
         cpus_per_task = config["blastx"]["threads"],
         slurm_partition = config["regular_partition"],
         slurm_account = config["account"]
@@ -276,58 +302,91 @@ rule blastx_rdrp:
         """
         mkdir -p results/5_blastx/blastx/{wildcards.sample} log/5_blastx/blastx
         
-        # Filter sequences with minimum length of 600 bp
-        seqkit seq -m 600 {input.fasta} > results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta
+        # Filter sequences with minimum length
+        seqkit seq -m {config[blastx][min_length]} {input.fasta} > results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta
         
         # Run DIAMOND BLASTX
         diamond blastx --query results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta \
             --db {input.db} \
             --out {output.tbl} \
             --outfmt 6 qseqid sseqid qlen length pident evalue \
-            --evalue 1E-5 \
+            --evalue {config[blastx][evalue]} \
             --threads {config[blastx][threads]} \
-            --max-target-seqs 1 \
-            --very-sensitive \
+            --max-target-seqs {config[blastx][max_target_seqs]} \
+            --{config[blastx][sensitivity]} \
             --quiet > {log.out} 2> {log.err}
         
         # Extract unique sequence IDs from BLASTX hits
         cat {output.tbl} | cut -f1 | sort -u > {output.unique_ids}
+        mkdir -p results/5_blastx/candidates results/5_blastx/uncandidates
+        seqkit grep -f {output.unique_ids} results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta > {output.candidates}
+        seqkit grep -v -f {output.unique_ids} results/5_blastx/blastx/{wildcards.sample}/{wildcards.sample}_filtered.fasta > {output.uncandidates}
         """
 
 
 #Rule 8 : orfipy to get ORFs for each sample
 rule orfipy:
     input:
-        fasta = "results/4_reformat/{sample}_reformat.fasta"
+        fasta = "results/5_blastx/uncandidates/{sample}_uncandidates.fasta"
     output:
-        orfs = "results/5_orfinder/{sample}/{sample}_orfs.fasta"
+        orfs = "results/6_orfinder/{sample}/{sample}_orfs.fasta",
+        orfs_filtered = "results/6_orfinder/{sample}/{sample}_orfs_filtered.fasta"
     conda:
         "envs/orfipy.yaml"
     resources:
         mem_mb_per_cpu = config["regular_memory"],
-        runtime = 120,
+        runtime = config["orfipy"]["runtime"],
         cpus_per_task = config["orfipy"]["threads"],
         slurm_partition = config["regular_partition"],
         slurm_account = config["account"]
     log:
-        out="log/5_orfinder/{sample}.log",
-        err="log/5_orfinder/{sample}.err"
+        out="log/6_orfinder/{sample}.log",
+        err="log/6_orfinder/{sample}.err"
     shell:
         """
-        mkdir -p results/5_orfinder/{wildcards.sample}
-        orfipy {input.fasta} --dna {output.orfs} --min 10 --max 10000 --procs {config[orfipy][threads]} --outdir results/5_orfinder/{wildcards.sample}/ > {log.out} 2> {log.err}
+        mkdir -p results/6_orfinder/{wildcards.sample} log/6_orfinder
+        orfipy {input.fasta} --dna {output.orfs} --min 10 --max 10000 --procs {config[orfipy][threads]} --outdir results/6_orfinder/{wildcards.sample}/ > {log.out} 2> {log.err}
+        # Filter ORFs by length (minimum 200 bp)
+        seqkit seq -m 200 {output.orfs} > {output.orfs_filtered}
         """
 
 
 
 
-rule hmmsearch_orfs:
+rule cluster_orfs:
+    input:
+        orfs_filtered = expand("results/6_orfinder/{sample}/{sample}_orfs_filtered.fasta", sample=config["samples"])
+    output:
+        merged_orfs = "results/7_hmmer/cd-hit/merged_orfs_filtered.fasta",
+        clustered_orfs = "results/7_hmmer/cd-hit/merged_orfs_filtered_98.fasta"
+    conda: "envs/cdhit-biopython-mafft-hmmer.yaml"
+    resources:
+        mem_mb_per_cpu = config["regular_memory"],
+        runtime = 360,  # minutes
+        cpus_per_task = 32,
+        slurm_partition = config["regular_partition"],
+        slurm_account = config["account"]
+    log:
+        out="log/7_hmmer/cluster_orfs.log",
+        err="log/7_hmmer/cluster_orfs.err"
+    shell:
+        """
+        mkdir -p results/7_hmmer/cd-hit log/7_hmmer
+        
+        # Concatenate all filtered ORF files
+        cat {input.orfs_filtered} > {output.merged_orfs}
+        
+        # Cluster at 98% identity using CD-HIT
+        cd-hit -i {output.merged_orfs} -o {output.clustered_orfs} -c 0.98 -n 5 -g 1 -G 0 -aS 0.8 -d 0 -p 1 -T {resources.cpus_per_task} -M 0 -B 1 > {log.out} 2> {log.err}
+        """
+
+rule hmmscan_orfs:
     input:
         hmmdb = "results/7_hmmer/database/custom_modules.hmm",
-        orfs = "results/5_orfinder/merged_orfs.fasta"
+        clustered_orfs = "results/7_hmmer/cd-hit/merged_orfs_filtered_98.fasta"
     output:
-        tbl = "results/7_hmmer/hmmer_hits.tbl",
-        domtbl = "results/7_hmmer/hmmer_dom.tbl"
+        tbl = "results/7_hmmer/hmmscan/hmmer_hits.tbl",
+        domtbl = "results/7_hmmer/hmmscan/hmmer_dom.tbl"
     conda: "envs/cdhit-biopython-mafft-hmmer.yaml"
     resources:
         mem_mb_per_cpu = config["regular_memory"],
@@ -336,25 +395,33 @@ rule hmmsearch_orfs:
         slurm_partition = config["regular_partition"],
         slurm_account = config["account"]
     log:
-        out="log/7_hmmer/hmmsearch.log",
-        err="log/7_hmmer/hmmsearch.err"
+        out="log/7_hmmer/hmmscan.log",
+        err="log/7_hmmer/hmmscan.err"
     shell:
         """
-        mkdir -p results/7_hmmer log/7_hmmer
-        hmmscan --cpu {resources.cpus_per_task} --tblout {output.tbl} --domtblout {output.domtbl} {input.hmmdb} {input.orfs} > {log.out} 2> {log.err}
+        mkdir -p results/7_hmmer/hmmscan log/7_hmmer
+        
+        # Run HMM search on clustered ORFs
+        hmmscan --cpu {resources.cpus_per_task} --tblout {output.tbl} --domtblout {output.domtbl} {input.hmmdb} {input.clustered_orfs} > {log.out} 2> {log.err}
         """
 
+'''
+#or use mmseq2
+
+        # MMseqs2 clustering at 98% identity with 80% coverage of the shorter sequence (similar to cd-hit -c 0.98 -aS 0.8)
+        mkdir -p results/7_hmmer/mmseqs results/7_hmmer/mmseqs_tmp
+        mmseqs easy-cluster \
+            {output.merged_orfs} \
+            results/7_hmmer/mmseqs/merged_orfs_98 \
+            results/7_hmmer/mmseqs_tmp \
+            --min-seq-id 0.98 -c 0.8 --cov-mode 1 \
+            --threads {resources.cpus_per_task}
+        # Use the representative sequences as the clustered output (matches cd-hit behavior)
+        mv results/7_hmmer/mmseqs/merged_orfs_98_rep_seq.fasta {output.clustered_orfs}
+        # (optional) clean tmp to save space
+        rm -rf results/7_hmmer/mmseqs_tmp
+
+'''
 
 
 
-
-#Rule 6: Merge all ORF files
-rule merge_orfs:
-    input:
-        orfs = expand("results/5_orfinder/{sample}/{sample}_orfs.fasta", sample=config["samples"])
-    output:
-        merged = "results/5_orfinder/merged_orfs.fasta"
-    shell:
-        """
-        cat {input.orfs} > {output.merged}
-        """
