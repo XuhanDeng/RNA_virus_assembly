@@ -50,6 +50,9 @@ results/
 logs/
 benchmarks/
 
+# Large database files (>100MB)
+database/rdrp_all/Cell_identified/cell_identified.faa
+
 # IDE files
 .vscode/
 .idea/
